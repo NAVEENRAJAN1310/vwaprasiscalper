@@ -1,0 +1,32 @@
+# ── Runtime files (never commit) ──────────────────────────────────────────────
+vwap_rsi_state.json
+vwap_rsi_paper_trades.csv
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# ── Node / Next.js ─────────────────────────────────────────────────────────────
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env*.local
+
+# ── AWS / secrets ─────────────────────────────────────────────────────────────
+.env
+.env.local
+*.pem
+*.key
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
