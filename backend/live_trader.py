@@ -1,7 +1,7 @@
 """
 VWAP+RSI Live Paper Trader
 ──────────────────────────────────────────────────────────────────────────────
-Reads Zerodha token from D:/TRADINGWORLD (no new token generation).
+Gets Zerodha token from kite-auth-service (http://localhost:8050).
 All orders are paper-simulated — no real orders placed.
 
 Strategy:
@@ -24,33 +24,24 @@ Usage (from D:\\vwaprasiscalper):
   python -m backend.live_trader
   # or directly:
   python backend/live_trader.py
+
+Prerequisites:
+  kite-auth-service must be running on http://localhost:8050
+  Set KITE_AUTH_URL env var to override the default URL.
 """
 
-import sys
-import os
 import logging
 import threading
 import time
 import json
 from datetime import datetime, date, timezone, timedelta
-from collections import deque
 from pathlib import Path
 from decimal import Decimal
 
 import boto3
+from kiteconnect import KiteConnect
 
-# ── TRADINGWORLD auth ──────────────────────────────────────────────────────────
-TW_ROOT = Path("D:/TRADINGWORLD/TRADINGWORLD")
-if not TW_ROOT.exists():
-    raise SystemExit(f"TRADINGWORLD not found at {TW_ROOT}. Update TW_ROOT.")
-sys.path.insert(0, str(TW_ROOT))
-os.chdir(str(TW_ROOT))   # pydantic-settings reads .env relative to cwd
-
-from kiteconnect import KiteConnect, KiteTicker
-from tools._kite_auth import _kite_client
-from tools.kite_orders import build_instrument_cache, resolve_nearest_expiry
-from notifications.telegram import TelegramNotifier
-from config import settings
+from backend.kite_client import get_kite, build_instrument_cache, resolve_nearest_expiry, TickerClient
 
 # ── File / cloud sinks ─────────────────────────────────────────────────────────
 # Project root = two levels up from this file (backend/live_trader.py)
@@ -562,11 +553,11 @@ def catchup_historical(kite, fut_token: int) -> None:
              f"{prsi:.1f}→{rsi:.1f}" if rsi and prsi else "seeding")
 
 
-# ── KiteTicker ─────────────────────────────────────────────────────────────────
+# ── Ticker ─────────────────────────────────────────────────────────────────────
 
-def start_ticker(api_key: str, access_token: str, fut_token: int) -> KiteTicker:
-    ws = KiteTicker(api_key, access_token)
-    state["ws"] = ws
+def start_ticker(fut_token: int) -> TickerClient:
+    """Connect to kite-auth-service WebSocket ticker proxy."""
+    ws = TickerClient()
 
     def on_ticks(ws, ticks):
         for tick in ticks:
@@ -605,15 +596,15 @@ def main() -> None:
     log.info("State file: %s", STATE_FILE)
     log.info("=" * 70)
 
-    # ── Auth ──────────────────────────────────────────────────────────────────
-    log.info("Authenticating (reads TRADINGWORLD token cache)...")
-    kite = _kite_client()
+    # ── Auth via kite-auth-service ────────────────────────────────────────────
+    log.info("Fetching Kite session from kite-auth-service...")
+    kite = get_kite()
     state["kite"] = kite
-    log.info("Kite ready. ...%s", (kite.access_token or "")[-8:])
+    log.info("Kite ready. token=...%s", (kite.access_token or "")[-8:])
 
-    # ── Telegram ──────────────────────────────────────────────────────────────
-    notifier = TelegramNotifier()
-    state["notifier"] = notifier
+    # Telegram notifier removed (no TRADINGWORLD dependency).
+    # Set state["notifier"] to a real notifier here if you add one later.
+    state["notifier"] = None
 
     # ── Instrument cache ──────────────────────────────────────────────────────
     log.info("Building NIFTY instrument cache...")
@@ -642,8 +633,8 @@ def main() -> None:
     # ── Historical catch-up ───────────────────────────────────────────────────
     catchup_historical(kite, fut_token)
 
-    # ── KiteTicker ────────────────────────────────────────────────────────────
-    ws = start_ticker(settings.kite_api_key, kite.access_token, fut_token)
+    # ── Ticker via kite-auth-service WS proxy ────────────────────────────────
+    ws = start_ticker(fut_token)
     state["ws"] = ws
     time.sleep(3)
 
@@ -654,12 +645,8 @@ def main() -> None:
 
     vwap_str = f"{state['vwap']:.0f}" if state["vwap"] else "building..."
     rsi_str  = f"{state['rsi14']:.1f}" if state["rsi14"] else "seeding..."
-    notifier.send_system_alert(
-        f"VWAP+RSI Paper Trader STARTED ({now_ist().strftime('%H:%M')} IST)\n"
-        f"Futures : {fut_symbol}\nVWAP: {vwap_str} | RSI: {rsi_str}\n"
-        f"Config  : Tgt +{TARGET_PTS}pts | SL -{STOP_PTS}pts | {TIME_STOP_MIN}-min stop",
-        "INFO",
-    )
+    log.info("Trader STARTED (%s IST) | Futures=%s | VWAP=%s | RSI=%s",
+             now_ist().strftime("%H:%M"), fut_symbol, vwap_str, rsi_str)
     log.info("Trader running. Ctrl+C to stop.")
 
     # ── EOD downloader at 3:40 PM ─────────────────────────────────────────────
@@ -721,7 +708,7 @@ def main() -> None:
             log.warning("Open position at shutdown: %s", pos["symbol"])
         _last_state_write = 0.0
         _write_state(is_running=False)
-        notifier.send_system_alert("VWAP+RSI Paper Trader STOPPED.", "WARNING")
+        log.info("Trader STOPPED.")
         log.info("Done.")
 
 

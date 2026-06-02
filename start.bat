@@ -1,8 +1,11 @@
 @echo off
 REM ── VWAP+RSI Scalper — Quick Start ──────────────────────────────────────────
 REM Run this from D:\vwaprasiscalper to start both backend and frontend.
+REM PREREQUISITE: kite-auth-service must already be running on port 8050
+REM   cd D:\kite-auth-service && start.bat
 
 echo Starting VWAP+RSI Scalper...
+echo   Requires kite-auth-service on http://localhost:8050
 echo.
 
 REM Backend (FastAPI on port 8056)

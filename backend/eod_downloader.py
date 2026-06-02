@@ -16,29 +16,21 @@ Usage:
   Standalone : python backend/eod_downloader.py
   From cron  : 40 15 * * 1-5  cd D:\\vwaprasiscalper && python backend/eod_downloader.py
   Imported   : from backend.eod_downloader import run_eod_download
+
+Prerequisites:
+  kite-auth-service must be running on http://localhost:8050
 """
 
-import sys
-import os
 import io
 import logging
 import time
 from datetime import datetime, date, timezone, timedelta
-from pathlib import Path
 
 import boto3
 import pandas as pd
 from botocore.exceptions import ClientError
 
-# ── TRADINGWORLD auth ──────────────────────────────────────────────────────────
-TW_ROOT = Path("D:/TRADINGWORLD/TRADINGWORLD")
-if not TW_ROOT.exists():
-    raise SystemExit(f"TRADINGWORLD not found at {TW_ROOT}")
-sys.path.insert(0, str(TW_ROOT))
-os.chdir(str(TW_ROOT))
-
-from tools._kite_auth import _kite_client
-from notifications.telegram import TelegramNotifier
+from backend.kite_client import get_kite
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 BUCKET       = "naveen-trading-data"
@@ -199,7 +191,7 @@ def get_options_instruments(kite, spot: float) -> list[dict]:
 
 # ── Core entry point ───────────────────────────────────────────────────────────
 
-def run_eod_download(notifier: TelegramNotifier | None = None) -> dict:
+def run_eod_download(notifier=None) -> dict:
     """
     Download today's NIFTY futures + options 1-min data and save to S3.
     Safe to call multiple times (incremental, deduplicates).
@@ -223,10 +215,10 @@ def run_eod_download(notifier: TelegramNotifier | None = None) -> dict:
         "errors":          [],
     }
 
-    # Auth
-    log.info("Authenticating...")
+    # Auth via kite-auth-service
+    log.info("Fetching Kite session from kite-auth-service...")
     try:
-        kite = _kite_client()
+        kite = get_kite()
     except Exception as e:
         msg = f"Kite auth failed: {e}"
         log.error(msg); summary["errors"].append(msg); return summary
@@ -300,16 +292,10 @@ def run_eod_download(notifier: TelegramNotifier | None = None) -> dict:
         log.warning("  Errors  : %s", summary["errors"])
     log.info("=" * 65)
 
-    # Telegram alert
-    _notifier = notifier
-    if _notifier is None:
-        try:
-            _notifier = TelegramNotifier()
-        except Exception:
-            pass
-    if _notifier:
+    # Optional notifier alert (pass a notifier object if you want alerts)
+    if notifier:
         status = "OK" if not summary["errors"] else f"WARN ({len(summary['errors'])} errors)"
-        _notifier.send_system_alert(
+        notifier.send_system_alert(
             f"EOD DATA DOWNLOAD — {today} [{status}]\n"
             f"Futures : {summary['futures_saved']} candles\n"
             f"Options : {summary['options_saved']} candles "
