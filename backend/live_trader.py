@@ -673,7 +673,8 @@ def main() -> None:
         threading.Thread(target=_run, name="EOD-Downloader", daemon=True).start()
         log.info("EOD downloader scheduled for 3:40 PM.")
 
-    _schedule_eod()
+    # EOD download now handled by nifty-eod-sync systemd timer
+    # _schedule_eod()
 
     # ── Main loop ─────────────────────────────────────────────────────────────
     try:
