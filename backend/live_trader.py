@@ -504,11 +504,58 @@ def _log_trade_csv(pos: dict, exit_price: float, reason: str, pnl: float) -> Non
 
 # ── Historical catch-up ────────────────────────────────────────────────────────
 
+def _seed_rsi_from_yesterday(kite, fut_token: int) -> None:
+    """Warm up RSI from yesterday's last N five-min candles before market opens."""
+    ist_now   = now_ist()
+    yesterday = ist_now.date() - timedelta(days=1)
+    while yesterday.weekday() >= 5:  # skip Saturday(5) and Sunday(6)
+        yesterday -= timedelta(days=1)
+
+    from_dt = datetime(yesterday.year, yesterday.month, yesterday.day, 13, 0, 0)
+    to_dt   = datetime(yesterday.year, yesterday.month, yesterday.day, 15, 30, 0)
+
+    try:
+        candles = kite.historical_data(
+            instrument_token=fut_token, from_date=from_dt, to_date=to_dt,
+            interval="5minute", continuous=False, oi=False,
+        )
+    except Exception as exc:
+        log.warning("RSI pre-seed failed: %s — RSI will seed from today's candles", exc)
+        return
+
+    if not candles:
+        log.warning("RSI pre-seed: no candles returned for %s", yesterday)
+        return
+
+    # Need RSI_PERIOD + 2 candles to produce both prev_rsi and rsi14
+    seed_candles = candles[-(RSI_PERIOD + 2):]
+    log.info("Seeding RSI from %d yesterday 5-min candles (%s %s–%s)",
+             len(seed_candles), yesterday,
+             seed_candles[0]["date"].strftime("%H:%M"),
+             seed_candles[-1]["date"].strftime("%H:%M"))
+
+    rsi_val  = None
+    prev_val = None
+    for c in seed_candles:
+        prev_val = rsi_val
+        rsi_val  = _rsi.update(float(c["close"]))
+
+    if rsi_val is not None:
+        with _lock:
+            state["rsi14"]    = rsi_val
+            state["prev_rsi"] = prev_val
+        log.info("RSI seeded: %.1f → %.1f (ready from 9:45 AM)", prev_val or 0, rsi_val)
+    else:
+        log.warning("RSI still seeding after %d candles — will seed from today's 5-min closes",
+                    len(seed_candles))
+
+
 def catchup_historical(kite, fut_token: int) -> None:
     ist_now     = now_ist()
     market_open = ist_now.replace(hour=9, minute=15, second=0, microsecond=0)
     if ist_now <= market_open:
-        log.info("At/before market open — no catch-up needed.")
+        log.info("Pre-market start — seeding RSI from yesterday's closes.")
+        _seed_rsi_from_yesterday(kite, fut_token)
         return
 
     minutes_late = int((ist_now - market_open).total_seconds() / 60)
