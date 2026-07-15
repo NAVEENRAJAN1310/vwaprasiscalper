@@ -703,6 +703,25 @@ def main() -> None:
              now_ist().strftime("%H:%M"), fut_symbol, vwap_str, rsi_str)
     log.info("Trader running. Ctrl+C to stop.")
 
+    # ── Debug: force-trade via SIGUSR1 ───────────────────────────────────────
+    import signal as _sig
+    def _force_trade_handler(signum, frame):
+        with _lock:
+            ltp  = state["fut_ltp"]
+            rsi  = state["rsi14"] or 50.0
+            vwap = state["vwap"]  or ltp
+        if not ltp:
+            log.warning("[DEBUG] force-trade: no LTP yet, skipping")
+            return
+        direction = "CE" if (rsi or 50) <= 52 else "PE"
+        log.info("[DEBUG] force-trade signal received → entering %s at LTP=%.0f", direction, ltp)
+        threading.Thread(
+            target=_enter_trade,
+            args=(direction, ltp, rsi or 50.0, now_ist()),
+            daemon=True,
+        ).start()
+    _sig.signal(_sig.SIGUSR1, _force_trade_handler)
+
     # ── EOD downloader at 3:40 PM ─────────────────────────────────────────────
     def _schedule_eod():
         global _EOD_DOWNLOADER_SCHEDULED

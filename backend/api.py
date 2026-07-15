@@ -225,6 +225,24 @@ def start_trader():
         return ActionResponse(success=False, message=str(e))
 
 
+@app.post("/debug/force-trade", response_model=ActionResponse)
+def force_trade():
+    """
+    Bypass all strategy conditions and inject a paper trade at current price.
+    Use only for testing the full pipeline (entry→WebSocket→exit→DynamoDB).
+    """
+    global _trader_proc
+    if not (_trader_proc and _trader_proc.poll() is None):
+        return ActionResponse(success=False, message="Trader not running — start it first")
+    try:
+        import signal as _sig
+        import os
+        os.kill(_trader_proc.pid, _sig.SIGUSR1)
+        return ActionResponse(success=True, message="Force-trade signal sent to trader")
+    except Exception as e:
+        return ActionResponse(success=False, message=str(e))
+
+
 @app.post("/stop", response_model=ActionResponse)
 def stop_trader():
     global _trader_proc

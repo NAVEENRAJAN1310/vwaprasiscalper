@@ -250,6 +250,15 @@ export default function Dashboard() {
     finally { setLoading(false); }
   };
 
+  const forceTrade = async () => {
+    if (!confirm('Force a paper trade NOW (bypasses all conditions)? Use only for testing.')) return;
+    try {
+      const r = await fetch(`${API}/debug/force-trade`, { method: 'POST' });
+      const d = await r.json();
+      if (!d.success) setError(d.message); else setError(null);
+    } catch (e) { setError(String(e)); }
+  };
+
   // ── Derived ────────────────────────────────────────────────────────────────
   const wins       = history.filter(t => t.pnl_total > 0).length;
   const total      = history.length;
@@ -390,6 +399,15 @@ export default function Dashboard() {
                   <RefreshCw className="h-4 w-4" />
                 </Button>
               </div>
+
+              {live?.api_trader_running && !live?.position && (
+                <button
+                  onClick={forceTrade}
+                  className="w-full text-xs text-yellow-600 border border-yellow-800/40 rounded-lg py-1.5 hover:bg-yellow-900/20 transition-colors"
+                >
+                  ⚡ Force Test Trade (debug only)
+                </button>
+              )}
 
               <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg border ${
                 live?.is_running
