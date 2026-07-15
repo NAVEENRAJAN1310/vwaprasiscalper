@@ -375,6 +375,8 @@ def _check_exit(ltp: float, ts: datetime) -> None:
         reason = "stop"
     elif elapsed >= TIME_STOP_MIN:
         reason = "time"
+    elif ts.hour * 60 + ts.minute >= 15 * 60 + 20:
+        reason = "time"  # hard cutoff at 3:20 PM
 
     if reason:
         threading.Thread(target=_exit_trade, args=(reason, opt_ltp), daemon=True).start()
