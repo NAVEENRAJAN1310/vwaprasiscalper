@@ -55,16 +55,17 @@ _EOD_DOWNLOADER_SCHEDULED = False
 _last_state_write: float  = 0.0
 
 # ── Strategy config ────────────────────────────────────────────────────────────
-LOTS          = 5
-TARGET_PTS    = 7
-STOP_PTS      = 5
-TIME_STOP_MIN = 15
-MAX_TRADES    = 3
-RSI_PERIOD    = 14
-RSI_BULL      = 48
-RSI_BEAR      = 52
-VWAP_BAND     = 20
-ENTRY_SLIP    = 1.0
+LOTS              = 5
+TARGET_PTS        = 7
+STOP_PTS          = 5
+TIME_STOP_MIN     = 15
+MAX_TRADES        = 999   # dry run: unlimited — analyse after 20 sessions
+TRADE_COOLDOWN_MIN = 15   # min gap between any two trades
+RSI_PERIOD        = 14
+RSI_BULL          = 48
+RSI_BEAR          = 52
+VWAP_BAND         = 20
+ENTRY_SLIP        = 1.0
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -119,7 +120,6 @@ class OnlineRSI:
 _lock = threading.Lock()
 _rsi  = OnlineRSI(RSI_PERIOD)
 
-STOP_COOLDOWN_MIN = 15   # minutes to wait after a stop loss before re-entering
 
 state: dict = {
     "today":           date.today(),
@@ -316,11 +316,11 @@ def _check_strategy(ltp: float, ts: datetime) -> None:
     if state["trades_today"] >= MAX_TRADES:
         return
 
-    # Cooldown after stop loss — don't re-enter for STOP_COOLDOWN_MIN minutes
+    # Cooldown after any exit — enforce min gap between trades
     last_stop = state["last_stop_ts"]
     if last_stop is not None:
-        mins_since_stop = (ts - last_stop).total_seconds() / 60
-        if mins_since_stop < STOP_COOLDOWN_MIN:
+        mins_since_last = (ts - last_stop).total_seconds() / 60
+        if mins_since_last < TRADE_COOLDOWN_MIN:
             return
 
     curr_rsi = state["rsi14"]
@@ -463,9 +463,8 @@ def _exit_trade(reason: str, exit_price: float) -> None:
         state["daily_pnl"]     = round(state["daily_pnl"] + pnl, 2)
         state["today_trades"].append(record)
         count = state["trades_today"]
-        if reason == "stop":
-            state["last_stop_ts"] = exit_ts
-            log.info("Stop cooldown started — no new entries for %d min", STOP_COOLDOWN_MIN)
+        state["last_stop_ts"] = exit_ts
+        log.info("Trade cooldown started — no new entries for %d min", TRADE_COOLDOWN_MIN)
 
     log.info("[PAPER EXIT] %s | %s | entry=%.2f exit=%.2f | P&L=₹%.0f",
              reason.upper(), pos["symbol"], entry, exit_price, pnl)
@@ -708,10 +707,9 @@ def main() -> None:
         done = len(resp.get("Items", []))
         if done > 0:
             state["trades_today"] = done
-            log.info("Restored from DynamoDB: %d trade(s) already done today — %d slot(s) remaining",
-                     done, MAX_TRADES - done)
+            log.info("Restored from DynamoDB: %d trade(s) already done today", done)
         else:
-            log.info("No trades in DynamoDB for today — starting fresh (0/%d)", MAX_TRADES)
+            log.info("No trades in DynamoDB for today — starting fresh")
     except Exception as exc:
         log.warning("Could not restore trade count from DynamoDB: %s", exc)
 
