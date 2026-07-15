@@ -194,6 +194,17 @@ def get_trades_by_date(date_str: str):
     return {"trades": fetch_trades(date_str)}
 
 
+def _stream_trader_logs(proc: subprocess.Popen) -> None:
+    """Forward live_trader stdout/stderr into the backend logger."""
+    import threading
+    def _read():
+        for line in proc.stdout:
+            line = line.rstrip()
+            if line:
+                log.info("[trader] %s", line)
+    threading.Thread(target=_read, name="TraderLogReader", daemon=True).start()
+
+
 @app.post("/start", response_model=ActionResponse)
 def start_trader():
     global _trader_proc
@@ -201,11 +212,13 @@ def start_trader():
         return ActionResponse(success=False, message="Trader is already running")
     try:
         _trader_proc = subprocess.Popen(
-            [sys.executable, str(TRADER_SCRIPT)],
+            [sys.executable, "-m", "backend.live_trader"],
+            cwd=str(PROJECT_ROOT),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
         )
+        _stream_trader_logs(_trader_proc)
         log.info("Trader started: PID=%d", _trader_proc.pid)
         return ActionResponse(success=True, message=f"Trader started (PID {_trader_proc.pid})")
     except Exception as e:
