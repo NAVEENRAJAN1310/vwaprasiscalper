@@ -715,10 +715,14 @@ def main() -> None:
             KeyConditionExpression="trade_date = :d",
             ExpressionAttributeValues={":d": today_str},
         )
-        done = len(resp.get("Items", []))
+        items = resp.get("Items", [])
+        done  = len(items)
         if done > 0:
+            from decimal import Decimal
+            restored_pnl = float(sum(i.get("pnl_total", Decimal("0")) for i in items))
             state["trades_today"] = done
-            log.info("Restored from DynamoDB: %d trade(s) already done today", done)
+            state["daily_pnl"]    = round(restored_pnl, 2)
+            log.info("Restored from DynamoDB: %d trade(s), daily P&L=₹%.0f", done, restored_pnl)
         else:
             log.info("No trades in DynamoDB for today — starting fresh")
     except Exception as exc:
