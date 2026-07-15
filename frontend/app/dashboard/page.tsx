@@ -669,17 +669,13 @@ export default function Dashboard() {
                 {/* Trades remaining */}
                 {(() => {
                   const done = live?.trades_today ?? 0;
-                  const remaining = 3 - done;
-                  const ok = remaining > 0;
                   return (
-                    <div className={`rounded-lg p-3 border ${ok ? 'bg-gray-800/40 border-gray-700' : 'bg-red-950/30 border-red-800'}`}>
-                      <p className="text-[10px] text-gray-500 uppercase mb-2">Trades Remaining</p>
-                      <p className={`text-lg font-black ${ok ? 'text-white' : 'text-red-400'}`}>
-                        {remaining} / 3
-                      </p>
+                    <div className="rounded-lg p-3 border bg-gray-800/40 border-gray-700">
+                      <p className="text-[10px] text-gray-500 uppercase mb-2">Trades Today</p>
+                      <p className="text-lg font-black text-white">{done}</p>
                       <p className="text-[10px] mt-1 text-gray-500">
                         {done === 0 ? '✅ No trades taken yet today'
-                          : `✅ ${done} trade${done > 1 ? 's' : ''} taken today`}
+                          : `✅ ${done} trade${done > 1 ? 's' : ''} taken · dry run`}
                       </p>
                     </div>
                   );
