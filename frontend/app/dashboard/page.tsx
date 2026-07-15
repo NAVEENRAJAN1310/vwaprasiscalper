@@ -59,6 +59,7 @@ interface TodayTrade {
 
 interface LiveState {
   is_running:          boolean;
+  market_status?:      'pre_market' | 'warming_up' | 'active' | 'market_closed' | 'stopped';
   updated_at:          string | null;
   fut_symbol:          string | null;
   fut_ltp:             number | null;
@@ -410,15 +411,25 @@ export default function Dashboard() {
               )}
 
               <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg border ${
-                live?.is_running
+                live?.market_status === 'active'
                   ? 'bg-emerald-950/50 text-emerald-400 border-emerald-800'
+                  : live?.market_status === 'market_closed'
+                  ? 'bg-gray-800/50 text-gray-400 border-gray-700'
+                  : live?.market_status === 'warming_up' || live?.market_status === 'pre_market'
+                  ? 'bg-yellow-950/50 text-yellow-400 border-yellow-800'
                   : 'bg-gray-800/50 text-gray-500 border-gray-700'
               }`}>
                 <span className={`h-2 w-2 rounded-full flex-shrink-0 ${
-                  live?.is_running ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'
+                  live?.market_status === 'active' ? 'bg-emerald-400 animate-pulse' :
+                  live?.market_status === 'warming_up' ? 'bg-yellow-400 animate-pulse' :
+                  'bg-gray-600'
                 }`} />
                 <span className="truncate">
-                  {live?.is_running ? 'Trader running' : 'Trader stopped'}
+                  {live?.market_status === 'active'       ? 'Trader running' :
+                   live?.market_status === 'warming_up'   ? 'Warming up (RSI seeding)' :
+                   live?.market_status === 'pre_market'   ? 'Pre-market' :
+                   live?.market_status === 'market_closed'? 'Market closed' :
+                   live?.is_running                       ? 'Trader running' : 'Trader stopped'}
                 </span>
                 {live?.trader_pid && (
                   <span className="text-gray-600 ml-auto text-[10px] flex-shrink-0">

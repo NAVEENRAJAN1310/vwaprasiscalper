@@ -183,18 +183,31 @@ def _write_state(is_running: bool = True) -> None:
                     "spot_at_entry":  pos.get("spot_at_entry"),
                 }
 
+            t = now_ist()
+            if not is_running:
+                mkt_status = "stopped"
+            elif t.hour < 9 or (t.hour == 9 and t.minute < 15):
+                mkt_status = "pre_market"
+            elif t.hour < 9 or (t.hour == 9 and t.minute < 45):
+                mkt_status = "warming_up"
+            elif t.hour > 15 or (t.hour == 15 and t.minute >= 15):
+                mkt_status = "market_closed"
+            else:
+                mkt_status = "active"
+
             snap = {
-                "is_running":   is_running,
-                "updated_at":   now_ist().isoformat(),
-                "fut_symbol":   state["fut_symbol"],
-                "fut_ltp":      state["fut_ltp"],
-                "vwap":         round(state["vwap"], 2) if state["vwap"] else None,
-                "rsi14":        round(state["rsi14"], 2) if state["rsi14"] else None,
-                "prev_rsi":     round(state["prev_rsi"], 2) if state["prev_rsi"] else None,
-                "trades_today": state["trades_today"],
-                "daily_pnl":    state["daily_pnl"],
-                "position":     pos_snap,
-                "today_trades": state["today_trades"],
+                "is_running":    is_running,
+                "market_status": mkt_status,
+                "updated_at":    now_ist().isoformat(),
+                "fut_symbol":    state["fut_symbol"],
+                "fut_ltp":       state["fut_ltp"],
+                "vwap":          round(state["vwap"], 2) if state["vwap"] else None,
+                "rsi14":         round(state["rsi14"], 2) if state["rsi14"] else None,
+                "prev_rsi":      round(state["prev_rsi"], 2) if state["prev_rsi"] else None,
+                "trades_today":  state["trades_today"],
+                "daily_pnl":     state["daily_pnl"],
+                "position":      pos_snap,
+                "today_trades":  state["today_trades"],
             }
 
         STATE_FILE.write_text(json.dumps(snap, indent=2, default=str), encoding="utf-8")
@@ -814,8 +827,8 @@ def main() -> None:
         while True:
             time.sleep(10)
             ist = now_ist()
-            if ist.hour >= 15 and ist.minute >= 50:
-                log.info("3:50 PM — shutting down.")
+            if ist.hour >= 15 and ist.minute >= 32:
+                log.info("3:32 PM — market closed, shutting down.")
                 break
             if ist.second < 10 and ist.minute % 5 == 0 and 9 <= ist.hour < 16:
                 with _lock:
