@@ -719,9 +719,25 @@ def main() -> None:
         done  = len(items)
         if done > 0:
             from decimal import Decimal
-            restored_pnl = float(sum(i.get("pnl_total", Decimal("0")) for i in items))
+            items_sorted = sorted(items, key=lambda x: x.get("entry_ts", ""))
+            restored_pnl = float(sum(i.get("pnl_total", Decimal("0")) for i in items_sorted))
             state["trades_today"] = done
             state["daily_pnl"]    = round(restored_pnl, 2)
+            state["today_trades"] = [
+                {
+                    "entry_ts":    i.get("entry_ts", ""),
+                    "exit_ts":     i.get("exit_ts", ""),
+                    "direction":   i.get("direction", ""),
+                    "symbol":      i.get("symbol", ""),
+                    "atm":         int(i.get("atm", 0)),
+                    "entry_price": float(i.get("entry_price", 0)),
+                    "exit_price":  float(i.get("exit_price", 0)),
+                    "reason":      i.get("reason", ""),
+                    "qty":         int(i.get("qty", 0)),
+                    "pnl":         float(i.get("pnl_total", Decimal("0"))),
+                }
+                for i in items_sorted
+            ]
             log.info("Restored from DynamoDB: %d trade(s), daily P&L=₹%.0f", done, restored_pnl)
         else:
             log.info("No trades in DynamoDB for today — starting fresh")
