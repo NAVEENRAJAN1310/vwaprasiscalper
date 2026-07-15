@@ -202,7 +202,8 @@ def _write_state(is_running: bool = True) -> None:
         log.debug("State write error: %s", exc)
 
 
-def _dynamo_save_trade(pos: dict, exit_price: float, reason: str, pnl: float) -> None:
+def _dynamo_save_trade(pos: dict, exit_price: float, reason: str, pnl: float,
+                       spot_exit: float = 0, vwap_exit: float = 0, rsi_exit: float = 0) -> None:
     """Persist completed trade to DynamoDB."""
     try:
         table = boto3.resource("dynamodb", region_name=AWS_REGION).Table(DYNAMO_TABLE)
@@ -222,6 +223,9 @@ def _dynamo_save_trade(pos: dict, exit_price: float, reason: str, pnl: float) ->
             "spot_entry":   Decimal(str(round(pos.get("spot_at_entry") or 0, 2))),
             "vwap_entry":   Decimal(str(round(pos.get("vwap_at_entry") or 0, 2))),
             "rsi_entry":    Decimal(str(round(pos.get("rsi_at_entry") or 0, 2))),
+            "spot_exit":    Decimal(str(round(spot_exit, 2))),
+            "vwap_exit":    Decimal(str(round(vwap_exit, 2))),
+            "rsi_exit":     Decimal(str(round(rsi_exit, 2))),
         })
         log.info("Trade saved to DynamoDB: %s | P&L=%.0f", pos["symbol"], pnl)
     except Exception as exc:
@@ -466,10 +470,17 @@ def _exit_trade(reason: str, exit_price: float) -> None:
         state["last_stop_ts"] = exit_ts
         log.info("Trade cooldown started — no new entries for %d min", TRADE_COOLDOWN_MIN)
 
-    log.info("[PAPER EXIT] %s | %s | entry=%.2f exit=%.2f | P&L=₹%.0f",
-             reason.upper(), pos["symbol"], entry, exit_price, pnl)
+    with _lock:
+        spot_exit = state["fut_ltp"] or 0
+        vwap_exit = state["vwap"]    or 0
+        rsi_exit  = state["rsi14"]   or 0
 
-    threading.Thread(target=_dynamo_save_trade, args=(pos, exit_price, reason, pnl), daemon=True).start()
+    log.info("[PAPER EXIT] %s | %s | entry=%.2f exit=%.2f | spot=%.0f vwap=%.0f rsi=%.1f | P&L=₹%.0f",
+             reason.upper(), pos["symbol"], entry, exit_price, spot_exit, vwap_exit, rsi_exit, pnl)
+
+    threading.Thread(target=_dynamo_save_trade,
+                     args=(pos, exit_price, reason, pnl, spot_exit, vwap_exit, rsi_exit),
+                     daemon=True).start()
     _log_trade_csv(pos, exit_price, reason, pnl)
 
     global _last_state_write
