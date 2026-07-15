@@ -504,7 +504,7 @@ export default function Dashboard() {
               {/* P&L metrics */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 <div className="bg-gray-900/60 rounded-lg p-3 text-center">
-                  <p className="text-[10px] text-gray-500 uppercase mb-1">Entry</p>
+                  <p className="text-[10px] text-gray-500 uppercase mb-1">Entry Price</p>
                   <p className="text-2xl font-black text-white tabular-nums">{fmt(pos.entry_price)}</p>
                 </div>
                 <div className="bg-gray-900/60 rounded-lg p-3 text-center">
@@ -522,54 +522,161 @@ export default function Dashboard() {
                   }`}>{fmtINR(pos.unrealized_pnl)}</p>
                 </div>
                 <div className="bg-gray-900/60 rounded-lg p-3 text-center">
-                  <p className="text-[10px] text-gray-500 uppercase mb-1">Entry time</p>
+                  <p className="text-[10px] text-gray-500 uppercase mb-1">Entry Time</p>
                   <p className="text-lg font-bold text-white">{fmtTime(pos.entry_ts)}</p>
                 </div>
               </div>
 
+              {/* Target / SL levels */}
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="bg-emerald-950/40 border border-emerald-800/40 rounded-lg p-3 text-center">
+                  <p className="text-[10px] text-emerald-600 uppercase mb-1">🎯 Target (+7pts)</p>
+                  <p className="text-xl font-black text-emerald-400 tabular-nums">{fmt(pos.entry_price + 7)}</p>
+                  <p className="text-[10px] text-emerald-700 mt-0.5">
+                    {pos.current_ltp < pos.entry_price + 7
+                      ? `${fmt(pos.entry_price + 7 - pos.current_ltp)} pts away`
+                      : '✓ HIT'}
+                  </p>
+                </div>
+                <div className="bg-gray-900/60 rounded-lg p-3 text-center">
+                  <p className="text-[10px] text-gray-500 uppercase mb-1">📍 Entry</p>
+                  <p className="text-xl font-black text-white tabular-nums">{fmt(pos.entry_price)}</p>
+                  <p className="text-[10px] text-gray-600 mt-0.5">qty {pos.qty}</p>
+                </div>
+                <div className="bg-red-950/40 border border-red-800/40 rounded-lg p-3 text-center">
+                  <p className="text-[10px] text-red-600 uppercase mb-1">🛑 Stop (-5pts)</p>
+                  <p className="text-xl font-black text-red-400 tabular-nums">{fmt(pos.entry_price - 5)}</p>
+                  <p className="text-[10px] text-red-700 mt-0.5">
+                    {pos.current_ltp > pos.entry_price - 5
+                      ? `${fmt(pos.current_ltp - (pos.entry_price - 5))} pts buffer`
+                      : '✗ HIT'}
+                  </p>
+                </div>
+              </div>
+
               {/* Time-stop progress */}
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 mb-3">
                 <div className="flex justify-between text-xs text-gray-400">
                   <span className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" /> Time stop progress
+                    <Clock className="h-3 w-3" /> Time stop (15 min max)
                   </span>
-                  <span className="tabular-nums">
+                  <span className="tabular-nums font-mono">
                     {Math.floor(timeElapsed)}m {Math.floor((timeElapsed % 1) * 60)}s / {TIME_STOP_MIN}m
+                    {timeElapsed >= TIME_STOP_MIN && <span className="text-red-400 ml-1">→ CLOSING</span>}
                   </span>
                 </div>
                 <Progress
                   value={timeProgress}
-                  className={`h-2 ${timeProgress > 80 ? '[&>div]:bg-red-500' : '[&>div]:bg-yellow-500'}`}
+                  className={`h-2.5 ${timeProgress > 80 ? '[&>div]:bg-red-500' : timeProgress > 50 ? '[&>div]:bg-yellow-500' : '[&>div]:bg-emerald-600'}`}
                 />
               </div>
 
-              {/* Target / SL */}
-              <div className="flex flex-wrap gap-4 mt-3 text-xs">
-                <span className="flex items-center gap-1 text-emerald-400">
-                  <Target className="h-3 w-3" />
-                  Target: <span className="font-mono font-bold ml-0.5">{fmt(pos.entry_price + 7)}</span>
-                </span>
-                <span className="text-red-400 flex items-center gap-1">
-                  SL: <span className="font-mono font-bold ml-0.5">{fmt(pos.entry_price - 5)}</span>
-                </span>
-                {pos.spot_at_entry && (
-                  <span className="text-gray-500 ml-auto">
-                    Spot@entry: {fmt(pos.spot_at_entry, 0)}
-                  </span>
-                )}
-                {pos.rsi_at_entry && (
-                  <span className="text-gray-500">
-                    RSI@entry: {fmt(pos.rsi_at_entry, 1)}
-                  </span>
-                )}
+              {/* Exit conditions summary */}
+              <div className="bg-gray-900/60 rounded-lg px-3 py-2 text-xs text-gray-500 space-y-1">
+                <p className="text-gray-400 font-semibold mb-1">Trade closes when:</p>
+                <p>✅ Option LTP reaches <span className="text-emerald-400 font-mono">{fmt(pos.entry_price + 7)}</span> → Target hit (+7pts)</p>
+                <p>🛑 Option LTP drops to <span className="text-red-400 font-mono">{fmt(pos.entry_price - 5)}</span> → Stop loss (-5pts)</p>
+                <p>⏱ 15 minutes elapsed since entry → Time stop</p>
+                <p>🕒 3:15 PM IST → Market close</p>
               </div>
+
+              {/* Entry context */}
+              {(pos.spot_at_entry || pos.rsi_at_entry || pos.vwap_at_entry) && (
+                <div className="flex flex-wrap gap-3 mt-3 text-[10px] text-gray-600">
+                  {pos.spot_at_entry && <span>Spot@entry: <span className="text-gray-500">{fmt(pos.spot_at_entry, 0)}</span></span>}
+                  {pos.vwap_at_entry && <span>VWAP@entry: <span className="text-gray-500">{fmt(pos.vwap_at_entry, 0)}</span></span>}
+                  {pos.rsi_at_entry  && <span>RSI@entry: <span className="text-gray-500">{fmt(pos.rsi_at_entry, 1)}</span></span>}
+                </div>
+              )}
             </CardContent>
           </Card>
         ) : (
+          /* ── No position: strategy watch panel ── */
           <Card className="bg-gray-900 border-gray-800">
-            <CardContent className="py-6 text-center text-gray-600">
-              <Activity className="h-8 w-8 mx-auto mb-2 opacity-20" />
-              <p className="text-sm">No open position</p>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-gray-400 font-medium flex items-center gap-2">
+                <Activity className="h-4 w-4" /> Strategy Watch · No Open Position
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+
+              {/* Entry conditions */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+
+                {/* RSI condition */}
+                {(() => {
+                  const r = live?.rsi14 ?? null;
+                  const pr = live?.prev_rsi ?? null;
+                  const ceSignal = pr !== null && r !== null && pr < 48 && r >= 48;
+                  const peSignal = pr !== null && r !== null && pr > 52 && r <= 52;
+                  const ok = ceSignal || peSignal;
+                  return (
+                    <div className={`rounded-lg p-3 border ${ok ? 'bg-emerald-950/30 border-emerald-700' : 'bg-gray-800/40 border-gray-700'}`}>
+                      <p className="text-[10px] text-gray-500 uppercase mb-2">RSI Signal</p>
+                      <p className={`text-lg font-black tabular-nums ${ok ? 'text-emerald-400' : 'text-gray-300'}`}>
+                        {r !== null ? fmt(r, 1) : 'seeding…'}
+                      </p>
+                      <p className="text-[10px] mt-1 text-gray-500">
+                        {r === null ? 'Warming up RSI…'
+                          : ceSignal ? '✅ CE signal fired (RSI crossed 48↑)'
+                          : peSignal ? '✅ PE signal fired (RSI crossed 52↓)'
+                          : r < 48 ? `Waiting for RSI to cross 48↑ (${fmt(48 - r, 1)} away)`
+                          : r > 52 ? `Waiting for RSI to cross 52↓ (${fmt(r - 52, 1)} away)`
+                          : `RSI in neutral zone (48–52) · no signal`}
+                      </p>
+                    </div>
+                  );
+                })()}
+
+                {/* VWAP zone condition */}
+                {(() => {
+                  const inZone = vwapDelta !== null && Math.abs(vwapDelta) <= 20;
+                  return (
+                    <div className={`rounded-lg p-3 border ${inZone ? 'bg-emerald-950/30 border-emerald-700' : 'bg-gray-800/40 border-gray-700'}`}>
+                      <p className="text-[10px] text-gray-500 uppercase mb-2">VWAP Zone (entry only)</p>
+                      <p className={`text-lg font-black tabular-nums ${inZone ? 'text-emerald-400' : 'text-gray-400'}`}>
+                        {vwapDelta !== null ? `${vwapDelta > 0 ? '+' : ''}${fmt(vwapDelta, 0)} pts` : '—'}
+                      </p>
+                      <p className="text-[10px] mt-1 text-gray-500">
+                        {vwapDelta === null ? '—'
+                          : inZone
+                            ? `✅ Within ±20pts of VWAP ${fmt(live!.vwap!, 0)}`
+                            : `❌ ${fmt(Math.abs(vwapDelta), 0)}pts from VWAP ${live?.vwap ? fmt(live.vwap, 0) : '—'} · entries blocked`}
+                      </p>
+                      <p className="text-[10px] text-gray-600 mt-1">⚠ VWAP zone only blocks new entries. Open trades close on Target / SL / Time only.</p>
+                    </div>
+                  );
+                })()}
+
+                {/* Trades remaining */}
+                {(() => {
+                  const done = live?.trades_today ?? 0;
+                  const remaining = 3 - done;
+                  const ok = remaining > 0;
+                  return (
+                    <div className={`rounded-lg p-3 border ${ok ? 'bg-gray-800/40 border-gray-700' : 'bg-red-950/30 border-red-800'}`}>
+                      <p className="text-[10px] text-gray-500 uppercase mb-2">Trades Remaining</p>
+                      <p className={`text-lg font-black ${ok ? 'text-white' : 'text-red-400'}`}>
+                        {remaining} / 3
+                      </p>
+                      <p className="text-[10px] mt-1 text-gray-500">
+                        {!ok ? '❌ Max 3 trades/day reached — no more entries today'
+                          : done === 0 ? '✅ No trades taken yet today'
+                          : `✅ ${done} trade${done > 1 ? 's' : ''} taken · ${remaining} remaining`}
+                      </p>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Strategy rules reference */}
+              <div className="bg-gray-800/30 rounded-lg p-3 text-[10px] text-gray-500 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div><span className="text-gray-400 font-semibold block mb-0.5">Entry window</span>9:45 AM – 3:15 PM IST</div>
+                <div><span className="text-gray-400 font-semibold block mb-0.5">Signal</span>RSI cross 48↑ CE · 52↓ PE</div>
+                <div><span className="text-gray-400 font-semibold block mb-0.5">Exit rules</span>+7pt target · -5pt SL · 15min</div>
+                <div><span className="text-gray-400 font-semibold block mb-0.5">Size</span>5 lots · max 3 trades/day</div>
+              </div>
+
             </CardContent>
           </Card>
         )}
