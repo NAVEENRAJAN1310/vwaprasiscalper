@@ -504,15 +504,21 @@ def _log_trade_csv(pos: dict, exit_price: float, reason: str, pnl: float) -> Non
 
 # ── Historical catch-up ────────────────────────────────────────────────────────
 
-def _seed_rsi_from_yesterday(kite, fut_token: int) -> None:
-    """Warm up RSI from yesterday's last N five-min candles before market opens."""
-    ist_now   = now_ist()
-    yesterday = ist_now.date() - timedelta(days=1)
-    while yesterday.weekday() >= 5:  # skip Saturday(5) and Sunday(6)
-        yesterday -= timedelta(days=1)
+def _seed_rsi_historical(kite, fut_token: int) -> None:
+    """
+    Fetch up to 60 days of 5-min closes for the current futures contract and
+    warm up the RSI EMA. VWAP is not touched — it is always intraday only.
+    """
+    ist_now  = now_ist()
+    # to = yesterday (last completed trading day)
+    to_date  = ist_now.date() - timedelta(days=1)
+    while to_date.weekday() >= 5:
+        to_date -= timedelta(days=1)
+    # from = 60 calendar days back (covers ~43 trading days)
+    from_date = ist_now.date() - timedelta(days=60)
 
-    from_dt = datetime(yesterday.year, yesterday.month, yesterday.day, 13, 0, 0)
-    to_dt   = datetime(yesterday.year, yesterday.month, yesterday.day, 15, 30, 0)
+    from_dt = datetime(from_date.year, from_date.month, from_date.day, 9, 15, 0)
+    to_dt   = datetime(to_date.year,   to_date.month,   to_date.day,  15, 30, 0)
 
     try:
         candles = kite.historical_data(
@@ -520,23 +526,21 @@ def _seed_rsi_from_yesterday(kite, fut_token: int) -> None:
             interval="5minute", continuous=False, oi=False,
         )
     except Exception as exc:
-        log.warning("RSI pre-seed failed: %s — RSI will seed from today's candles", exc)
+        log.warning("RSI historical seed failed: %s — RSI will seed from today's candles", exc)
         return
 
     if not candles:
-        log.warning("RSI pre-seed: no candles returned for %s", yesterday)
+        log.warning("RSI historical seed: no candles returned for range %s to %s", from_date, to_date)
         return
 
-    # Need RSI_PERIOD + 2 candles to produce both prev_rsi and rsi14
-    seed_candles = candles[-(RSI_PERIOD + 2):]
-    log.info("Seeding RSI from %d yesterday 5-min candles (%s %s–%s)",
-             len(seed_candles), yesterday,
-             seed_candles[0]["date"].strftime("%H:%M"),
-             seed_candles[-1]["date"].strftime("%H:%M"))
+    log.info("Seeding RSI from %d historical 5-min candles (%s → %s)",
+             len(candles),
+             candles[0]["date"].strftime("%Y-%m-%d"),
+             candles[-1]["date"].strftime("%Y-%m-%d"))
 
     rsi_val  = None
     prev_val = None
-    for c in seed_candles:
+    for c in candles:
         prev_val = rsi_val
         rsi_val  = _rsi.update(float(c["close"]))
 
@@ -544,22 +548,25 @@ def _seed_rsi_from_yesterday(kite, fut_token: int) -> None:
         with _lock:
             state["rsi14"]    = rsi_val
             state["prev_rsi"] = prev_val
-        log.info("RSI seeded: %.1f → %.1f (ready from 9:45 AM)", prev_val or 0, rsi_val)
+        log.info("RSI seeded from %d candles: %.1f → %.1f", len(candles), prev_val or 0, rsi_val)
     else:
-        log.warning("RSI still seeding after %d candles — will seed from today's 5-min closes",
-                    len(seed_candles))
+        log.warning("RSI still seeding after %d candles — need more data", len(candles))
 
 
 def catchup_historical(kite, fut_token: int) -> None:
     ist_now     = now_ist()
     market_open = ist_now.replace(hour=9, minute=15, second=0, microsecond=0)
+
+    # Always seed RSI from full 60-day history first
+    _seed_rsi_historical(kite, fut_token)
+
     if ist_now <= market_open:
-        log.info("Pre-market start — seeding RSI from yesterday's closes.")
-        _seed_rsi_from_yesterday(kite, fut_token)
+        log.info("Pre-market start — RSI seeded, VWAP will build from first tick at 9:15 AM.")
         return
 
+    # Late start: replay today's 1-min candles to build VWAP from 9:15 AM
     minutes_late = int((ist_now - market_open).total_seconds() / 60)
-    log.info("Late start (%s, %d min after open) — fetching historical data...",
+    log.info("Late start (%s, %d min after open) — fetching today's 1-min candles for VWAP...",
              ist_now.strftime("%H:%M"), minutes_late)
 
     from_dt = market_open.replace(tzinfo=None)
@@ -570,14 +577,14 @@ def catchup_historical(kite, fut_token: int) -> None:
             interval="minute", continuous=False, oi=False,
         )
     except Exception as exc:
-        log.warning("Historical catch-up failed: %s", exc)
+        log.warning("VWAP catch-up failed: %s", exc)
         return
 
     if not candles:
-        log.warning("Catch-up: no candles returned.")
+        log.warning("VWAP catch-up: no candles returned.")
         return
 
-    log.info("Replaying %d historical 1-min candles...", len(candles))
+    log.info("Replaying %d today's 1-min candles for VWAP...", len(candles))
     with _lock:
         for c in candles:
             ts = c["date"]
@@ -595,8 +602,8 @@ def catchup_historical(kite, fut_token: int) -> None:
     vwap = state["vwap"]
     rsi  = state["rsi14"]
     prsi = state["prev_rsi"]
-    log.info("Catch-up done: %d candles | VWAP=%.0f | RSI=%s",
-             len(candles), vwap or 0,
+    log.info("Catch-up done | VWAP=%.0f | RSI=%s",
+             vwap or 0,
              f"{prsi:.1f}→{rsi:.1f}" if rsi and prsi else "seeding")
 
 
