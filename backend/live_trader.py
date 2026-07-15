@@ -119,12 +119,15 @@ class OnlineRSI:
 _lock = threading.Lock()
 _rsi  = OnlineRSI(RSI_PERIOD)
 
+STOP_COOLDOWN_MIN = 15   # minutes to wait after a stop loss before re-entering
+
 state: dict = {
     "today":           date.today(),
     "trades_today":    0,
     "daily_pnl":       0.0,
     "today_trades":    [],
     "position":        None,
+    "last_stop_ts":    None,   # datetime of last stop-loss exit
     "cur_candle":      None,
     "candles_1m":      [],
     "candles_5m_buf":  [],
@@ -313,6 +316,13 @@ def _check_strategy(ltp: float, ts: datetime) -> None:
     if state["trades_today"] >= MAX_TRADES:
         return
 
+    # Cooldown after stop loss — don't re-enter for STOP_COOLDOWN_MIN minutes
+    last_stop = state["last_stop_ts"]
+    if last_stop is not None:
+        mins_since_stop = (ts - last_stop).total_seconds() / 60
+        if mins_since_stop < STOP_COOLDOWN_MIN:
+            return
+
     curr_rsi = state["rsi14"]
     prev_rsi = state["prev_rsi"]
     vwap     = state["vwap"]
@@ -453,6 +463,9 @@ def _exit_trade(reason: str, exit_price: float) -> None:
         state["daily_pnl"]     = round(state["daily_pnl"] + pnl, 2)
         state["today_trades"].append(record)
         count = state["trades_today"]
+        if reason == "stop":
+            state["last_stop_ts"] = exit_ts
+            log.info("Stop cooldown started — no new entries for %d min", STOP_COOLDOWN_MIN)
 
     log.info("[PAPER EXIT] %s | %s | entry=%.2f exit=%.2f | P&L=₹%.0f",
              reason.upper(), pos["symbol"], entry, exit_price, pnl)
@@ -683,6 +696,24 @@ def main() -> None:
     state["fut_token"]  = fut_token
     state["fut_symbol"] = fut_symbol
     log.info("Futures: %s | token=%d | expiry=%s", fut_symbol, fut_token, fut_inst["expiry"])
+
+    # ── Restore today's trade count from DynamoDB ────────────────────────────
+    try:
+        today_str = date.today().strftime("%Y-%m-%d")
+        table = boto3.resource("dynamodb", region_name=AWS_REGION).Table(DYNAMO_TABLE)
+        resp  = table.query(
+            KeyConditionExpression="trade_date = :d",
+            ExpressionAttributeValues={":d": today_str},
+        )
+        done = len(resp.get("Items", []))
+        if done > 0:
+            state["trades_today"] = done
+            log.info("Restored from DynamoDB: %d trade(s) already done today — %d slot(s) remaining",
+                     done, MAX_TRADES - done)
+        else:
+            log.info("No trades in DynamoDB for today — starting fresh (0/%d)", MAX_TRADES)
+    except Exception as exc:
+        log.warning("Could not restore trade count from DynamoDB: %s", exc)
 
     # ── Historical catch-up ───────────────────────────────────────────────────
     catchup_historical(kite, fut_token)
