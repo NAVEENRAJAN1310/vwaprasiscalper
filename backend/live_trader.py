@@ -838,8 +838,11 @@ def main() -> None:
             pass
         with _lock:
             pos = state["position"]
+            ltp = state.get("fut_ltp")
         if pos:
-            log.warning("Open position at shutdown: %s", pos["symbol"])
+            log.warning("Open position at shutdown — force-closing: %s", pos["symbol"])
+            opt_ltp = state["opt_ltp"].get(pos.get("opt_token")) or pos["entry_price"]
+            _exit_trade("time", opt_ltp)
         _last_state_write = 0.0
         _write_state(is_running=False)
         log.info("Trader STOPPED.")
