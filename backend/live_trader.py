@@ -827,8 +827,8 @@ def main() -> None:
         while True:
             time.sleep(10)
             ist = now_ist()
-            if ist.hour >= 15 and ist.minute >= 32:
-                log.info("3:32 PM — market closed, shutting down.")
+            if ist.hour >= 15 and ist.minute >= 45:
+                log.info("3:45 PM — shutting down.")
                 break
             if ist.second < 10 and ist.minute % 5 == 0 and 9 <= ist.hour < 16:
                 with _lock:
