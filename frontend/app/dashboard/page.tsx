@@ -678,9 +678,8 @@ export default function Dashboard() {
                         {remaining} / 3
                       </p>
                       <p className="text-[10px] mt-1 text-gray-500">
-                        {!ok ? '❌ Max 3 trades/day reached — no more entries today'
-                          : done === 0 ? '✅ No trades taken yet today'
-                          : `✅ ${done} trade${done > 1 ? 's' : ''} taken · ${remaining} remaining`}
+                        {done === 0 ? '✅ No trades taken yet today'
+                          : `✅ ${done} trade${done > 1 ? 's' : ''} taken today`}
                       </p>
                     </div>
                   );
@@ -692,7 +691,7 @@ export default function Dashboard() {
                 <div><span className="text-gray-400 font-semibold block mb-0.5">Entry window</span>9:45 AM – 3:15 PM IST</div>
                 <div><span className="text-gray-400 font-semibold block mb-0.5">Signal</span>RSI cross 48↑ CE · 52↓ PE</div>
                 <div><span className="text-gray-400 font-semibold block mb-0.5">Exit rules</span>+7pt target · -5pt SL · 15min</div>
-                <div><span className="text-gray-400 font-semibold block mb-0.5">Size</span>5 lots · max 3 trades/day</div>
+                <div><span className="text-gray-400 font-semibold block mb-0.5">Size</span>5 lots · 15min cooldown</div>
               </div>
 
             </CardContent>
@@ -712,7 +711,7 @@ export default function Dashboard() {
                 <div className="bg-gray-800 rounded-lg p-3 text-center">
                   <p className="text-[10px] text-gray-500 uppercase mb-1">Trades</p>
                   <p className="text-2xl font-black text-white">
-                    {todayTotal}<span className="text-sm text-gray-600">/3</span>
+                    {todayTotal}
                   </p>
                 </div>
                 <div className="bg-gray-800 rounded-lg p-3 text-center">
