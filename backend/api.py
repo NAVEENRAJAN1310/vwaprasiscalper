@@ -286,6 +286,25 @@ async def websocket_state(websocket: WebSocket):
 @app.on_event("startup")
 async def startup():
     """Ensure DynamoDB table vwap_rsi_trades exists (idempotent)."""
+    # Reset stale state.json from a previous day so dashboard shows 0 before trader starts
+    try:
+        if STATE_FILE.exists():
+            s = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            updated_at = s.get("updated_at", "")
+            state_date = updated_at[:10] if updated_at else ""
+            today_str  = datetime.now(IST).strftime("%Y-%m-%d")
+            if state_date and state_date != today_str:
+                s["trades_today"]  = 0
+                s["daily_pnl"]     = 0.0
+                s["today_trades"]  = []
+                s["position"]      = None
+                s["is_running"]    = False
+                s["market_status"] = "stopped"
+                STATE_FILE.write_text(json.dumps(s, indent=2), encoding="utf-8")
+                log.info("New day detected — reset stale state.json (was %s)", state_date)
+    except Exception as e:
+        log.warning("Could not reset state.json on startup: %s", e)
+
     try:
         client = boto3.client("dynamodb", region_name=AWS_REGION)
         client.describe_table(TableName=DYNAMO_TABLE)
